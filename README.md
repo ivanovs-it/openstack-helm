@@ -1,6 +1,6 @@
 # openstack-helm
 
-How to install Openstack using [OpenStack-Helm](https://docs.openstack.org/openstack-helm/latest/readme.html) project.
+How to install OpenStack release 2025.1 (Epoxy) using [OpenStack-Helm](https://docs.openstack.org/openstack-helm/latest/readme.html) project.
 
 ### Prerequisites
 
@@ -12,7 +12,7 @@ How to install Openstack using [OpenStack-Helm](https://docs.openstack.org/opens
 | helm-03  |  ens3 / 192.168.1.103   | ens4          |
 | helm-04  |  ens3 / 192.168.1.104   | ens4          |
 
-The required host OS is Ubuntu Jammy (22.04). Additionally, a deployer host is needed; this could be a laptop or a workstation.
+The required host OS is Ubuntu Noble Numbat (24.04). Additionally, a deployer host is needed; this could be a laptop or a workstation.
 
 ### Deploy environment
 Execute on every node and reboot:
@@ -39,29 +39,24 @@ echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/helm.
 sudo apt-get update
 sudo apt-get install helm
 ```
-Install `python3-netaddr` package to avoid 'Failed to import the required Python library (netaddr)' error. This is related to the Ansible [issue](https://github.com/ansible/workshops/issues/115).
-```bash
-sudo apt-get install -y --no-install-recommends python3-netaddr
-```
 Install the required Helm objects:
 ```bash
 helm repo add openstack-helm https://tarballs.opendev.org/openstack/openstack-helm
-helm repo add openstack-helm-infra https://tarballs.opendev.org/openstack/openstack-helm-infra
 helm plugin install https://opendev.org/openstack/openstack-helm-plugin
 ```
 Clone roles git repositories and install Ansible:
 ```bash
 mkdir ~/osh
 cd ~/osh
-git clone https://opendev.org/openstack/openstack-helm-infra.git
+git clone https://opendev.org/openstack/openstack-helm.git
 git clone https://opendev.org/zuul/zuul-jobs.git
-pip install ansible
+pip install --break-system-packages ansible
 export PATH=$PATH:/home/ubuntu/.local/bin
-export ANSIBLE_ROLES_PATH=~/osh/openstack-helm-infra/roles:~/osh/zuul-jobs/roles
-echo -e "\nexport ANSIBLE_ROLES_PATH=/home/ubuntu/osh/openstack-helm-infra/roles:/home/ubuntu/osh/zuul-jobs/roles" >> ~/.bashrc
+export ANSIBLE_ROLES_PATH=~/osh/openstack-helm/roles:~/osh/zuul-jobs/roles
+echo -e "\nexport ANSIBLE_ROLES_PATH=/home/ubuntu/osh/openstack-helm/roles:/home/ubuntu/osh/zuul-jobs/roles" >> ~/.bashrc
 ```
 Assign `ignore_errors` to the following Ansible task, since we will be using the existing device:  
-*~/osh/openstack-helm-infra/roles/deploy-env/tasks/loopback_devices.yaml*
+*~/osh/openstack-helm/roles/deploy-env/tasks/loopback_devices.yaml*
 ```diff
  - name: Create loop device
    shell: |
@@ -165,15 +160,15 @@ helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
     --set controller.ingressClassResource.default="false" \
     --set controller.ingressClass=nginx \
     --set controller.labels.app=ingress-api
-
+```
 ### Ceph
 Install Ceph using scripts provided by the [Rook](https://rook.io/) project.  
 Execute on the seed node:
 ```bash
 mkdir ~/osh
 cd ~/osh
-git clone https://opendev.org/openstack/openstack-helm-infra.git
-cd ~/osh/openstack-helm-infra/tools/deployment/ceph
+git clone https://opendev.org/openstack/openstack-helm.git
+cd ~/osh/openstack-helm/tools/deployment/ceph
 ./ceph-rook.sh
 ```
 Assign labels to the Kubernetes nodes:
@@ -185,8 +180,8 @@ kubectl label --overwrite nodes --all openvswitch=enabled
 Generate the client secrets using the script `ceph-adapter-root`:
 ```bash
 cd ~/osh/
-helm dependency build openstack-helm-infra/ceph-adapter-rook
-helm upgrade --install ceph-adapter-rook openstack-helm-infra/ceph-adapter-rook --namespace=openstack
+helm dependency build openstack-helm/ceph-adapter-rook
+helm upgrade --install ceph-adapter-rook openstack-helm/ceph-adapter-rook --namespace=openstack
 
 helm osh wait-for-pods openstack
 ```
@@ -196,25 +191,20 @@ Execute on the seed node:
 ```bash
 helm repo add openstack-helm https://tarballs.opendev.org/openstack/openstack-helm
 
-export OPENSTACK_RELEASE=2024.1
-export FEATURES="${OPENSTACK_RELEASE} ubuntu_jammy"
+export OPENSTACK_RELEASE=2025.1
+export FEATURES="${OPENSTACK_RELEASE} ubuntu_noble"
 export OVERRIDES_DIR=$(pwd)/overrides
 
 cd ~/osh
-INFRA_OVERRIDES_URL=https://opendev.org/openstack/openstack-helm-infra/raw/branch/master
-for chart in rabbitmq mariadb memcached openvswitch libvirt; do
-    helm osh get-values-overrides -d -u ${INFRA_OVERRIDES_URL} -p ${OVERRIDES_DIR} -c ${chart} ${FEATURES}
-done
-
-OVERRIDES_URL=https://opendev.org/openstack/openstack-helm/raw/branch/master
-for chart in keystone heat glance cinder placement nova neutron horizon; do
+OVERRIDES_URL=https://opendev.org/openstack/openstack-helm/raw/branch/master/values_overrides
+for chart in rabbitmq mariadb memcached openvswitch libvirt keystone heat glance cinder placement nova neutron horizon; do
     helm osh get-values-overrides -d -u ${OVERRIDES_URL} -p ${OVERRIDES_DIR} -c ${chart} ${FEATURES}
 done
 ```
 Execute to deploy RabbitMQ service:
 ```bash
-helm dependency build openstack-helm-infra/rabbitmq
-helm upgrade --install rabbitmq openstack-helm-infra/rabbitmq \
+helm dependency build openstack-helm/rabbitmq
+helm upgrade --install rabbitmq openstack-helm/rabbitmq \
     --namespace=openstack \
     --set pod.replicas.server=1 \
     --timeout=600s \
@@ -222,8 +212,8 @@ helm upgrade --install rabbitmq openstack-helm-infra/rabbitmq \
 ```
 Execute to deploy MariaDB:
 ```bash
-helm dependency build openstack-helm-infra/mariadb
-helm upgrade --install mariadb openstack-helm-infra/mariadb \
+helm dependency build openstack-helm/mariadb
+helm upgrade --install mariadb openstack-helm/mariadb \
     --namespace=openstack \
     --set pod.replicas.server=1 \
     $(helm osh get-values-overrides -p ${OVERRIDES_DIR} -c mariadb ${FEATURES})
@@ -232,8 +222,8 @@ helm osh wait-for-pods openstack
 ```
 Execute to deploy Memcached:
 ```bash
-helm dependency build openstack-helm-infra/memcached
-helm upgrade --install memcached openstack-helm-infra/memcached \
+helm dependency build openstack-helm/memcached
+helm upgrade --install memcached openstack-helm/memcached \
     --namespace=openstack \
     $(helm osh get-values-overrides -p ${OVERRIDES_DIR} -c memcached ${FEATURES})
 
@@ -241,25 +231,28 @@ helm osh wait-for-pods openstack
 ```
 To deploy the Keystone service run the following:
 ```bash
+helm dependency build openstack-helm/keystone
 helm upgrade --install keystone openstack-helm/keystone \
     --namespace=openstack \
     $(helm osh get-values-overrides -p ${OVERRIDES_DIR} -c keystone ${FEATURES})
 ```
 The Glance deployment commands are as follows:
 ```bash
-tee ${OVERRIDES_DIR}/glance/values_overrides/glance_pvc_storage.yaml <<EOF
+tee ${OVERRIDES_DIR}/glance/glance_pvc_storage.yaml <<EOF
 storage: pvc
 volume:
   class_name: general
   size: 10Gi
 EOF
 
+helm dependency build openstack-helm/glance
 helm upgrade --install glance openstack-helm/glance \
     --namespace=openstack \
     $(helm osh get-values-overrides -p ${OVERRIDES_DIR} -c glance glance_pvc_storage ${FEATURES})
 ```
 To deploy the OpenStack Cinder use the following:
 ```bash
+helm dependency build openstack-helm/cinder
 helm upgrade --install cinder openstack-helm/cinder \
     --namespace=openstack \
     --timeout=600s \
@@ -267,8 +260,8 @@ helm upgrade --install cinder openstack-helm/cinder \
 ```
 To deploy the OpenvSwitch service use the following:
 ```bash
-helm dependency build openstack-helm-infra/openvswitch
-helm upgrade --install openvswitch openstack-helm-infra/openvswitch \
+helm dependency build openstack-helm/openvswitch
+helm upgrade --install openvswitch openstack-helm/openvswitch \
     --namespace=openstack \
     $(helm osh get-values-overrides -p ${OVERRIDES_DIR} -c openvswitch ${FEATURES})
 
@@ -276,20 +269,22 @@ helm osh wait-for-pods openstack
 ```
 To deploy the Libvirt service use the following:
 ```bash
-helm dependency build openstack-helm-infra/libvirt
-helm upgrade --install libvirt openstack-helm-infra/libvirt \
+helm dependency build openstack-helm/libvirt
+helm upgrade --install libvirt openstack-helm/libvirt \
     --namespace=openstack \
     --set conf.ceph.enabled=true \
     $(helm osh get-values-overrides -p ${OVERRIDES_DIR} -c libvirt ${FEATURES})
 ```
 To deploy the OpenStack Placement service use the following:
 ```bash
+helm dependency build openstack-helm/placement
 helm upgrade --install placement openstack-helm/placement \
     --namespace=openstack \
     $(helm osh get-values-overrides -p ${OVERRIDES_DIR} -c placement ${FEATURES})
 ```
 To deploy the OpenStack Nova service use the following:
 ```bash
+helm dependency build openstack-helm/nova
 helm upgrade --install nova openstack-helm/nova \
     --namespace=openstack \
     --set bootstrap.wait_for_computes.enabled=true \
@@ -299,7 +294,7 @@ helm upgrade --install nova openstack-helm/nova \
 To deploy the OpenStack Neutron service use the following:
 ```bash
 PROVIDER_INTERFACE=ens4
-tee ${OVERRIDES_DIR}/neutron/values_overrides/neutron_simple.yaml << EOF
+tee ${OVERRIDES_DIR}/neutron/neutron_simple.yaml << EOF
 conf:
   neutron:
     DEFAULT:
@@ -316,6 +311,7 @@ conf:
         bridge_mappings: public:br-ex
 EOF
 
+helm dependency build openstack-helm/neutron
 helm upgrade --install neutron openstack-helm/neutron \
     --namespace=openstack \
     $(helm osh get-values-overrides -p ${OVERRIDES_DIR} -c neutron neutron_simple ${FEATURES})
@@ -324,12 +320,14 @@ helm osh wait-for-pods openstack
 ```
 To deploy the OpenStack Heat service use the following:
 ```bash
+helm dependency build openstack-helm/heat
 helm upgrade --install heat openstack-helm/heat \
     --namespace=openstack \
     $(helm osh get-values-overrides -p ${OVERRIDES_DIR} -c heat ${FEATURES})
 ```
 To deploy the OpenStack Horizon service use the following:
 ```bash
+helm dependency build openstack-helm/horizon
 helm upgrade --install horizon openstack-helm/horizon \
     --namespace=openstack \
     $(helm osh get-values-overrides -p ${OVERRIDES_DIR} -c horizon ${FEATURES})
